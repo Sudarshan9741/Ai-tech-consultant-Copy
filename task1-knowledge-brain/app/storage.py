@@ -217,3 +217,4 @@ class Storage:
             return row["value"] if row else None
 
 storage = Storage()
+

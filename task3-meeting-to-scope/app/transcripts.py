@@ -58,3 +58,4 @@ SAMPLE_TRANSCRIPTS: List[MeetingTranscript] = [
         is_followup=False
     )
 ]
+

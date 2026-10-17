@@ -68,3 +68,4 @@ class VectorStore:
         return results
 
 vector_store = VectorStore()
+

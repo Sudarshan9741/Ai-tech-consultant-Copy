@@ -28,3 +28,4 @@ class KnowledgeBrainClient:
         }
 
 knowledge_client = KnowledgeBrainClient()
+

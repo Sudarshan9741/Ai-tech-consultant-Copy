@@ -14,10 +14,10 @@ from app.rag_engine import rag_engine
 
 def ensure_seed_data():
     """Ensure seed articles are loaded into database and index."""
-    existing_urls = {a["url"] for a in storage.list_articles(limit=5000)}
+    active_urls = {a["url"] for a in storage.list_articles(limit=5000) if a["status"] == "active"}
     loaded_new = False
     for art in SEED_ARTICLES:
-        if art["url"] not in existing_urls:
+        if art["url"] not in active_urls:
             storage.save_article(
                 url=art["url"],
                 title=art["title"],

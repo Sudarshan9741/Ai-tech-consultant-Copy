@@ -70,3 +70,4 @@ export interface CategoryAutonomyState {
   lastActionAt: string | null;
   lastResetReason: string | null;
 }
+

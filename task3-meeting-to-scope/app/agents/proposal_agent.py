@@ -43,3 +43,4 @@ class ProposalAgent:
         )
 
 proposal_agent = ProposalAgent()
+

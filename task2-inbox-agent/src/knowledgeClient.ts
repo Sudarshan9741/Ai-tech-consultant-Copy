@@ -66,3 +66,4 @@ export class KnowledgeBrainClient {
 }
 
 export const knowledgeClient = new KnowledgeBrainClient();
+

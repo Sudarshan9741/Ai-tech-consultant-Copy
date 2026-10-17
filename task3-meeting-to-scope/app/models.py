@@ -77,3 +77,4 @@ class ScopeDiffReport(BaseModel):
     change_order_required: bool
     summary_of_changes: str
     human_approved: bool = False
+

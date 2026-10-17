@@ -253,3 +253,4 @@ def chunk_text(text: str, max_chunk_chars: int = 500, overlap: int = 80) -> list
         if chunk:
             chunks.append(chunk)
     return chunks
+

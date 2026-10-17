@@ -56,3 +56,4 @@ During your 30-minute live review with the evaluator, you must be ready to expla
 - **Change 3: "Add a new intent category to the Inbox Agent (e.g. PARTNERSHIP)."**
   - In `task2-inbox-agent/src/types.ts`: Add `"PARTNERSHIP"` to `EmailCategorySchema`.
   - In `task2-inbox-agent/src/classifier.ts`: Add keyword check for `"partner"` or `"collaboration"`.
+

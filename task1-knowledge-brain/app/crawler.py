@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 
 from app.config import settings
 from app.storage import storage
-from app.seed_data import chunk_text
+from app.seed_data import chunk_text, SEED_ARTICLES
 from app.vector_store import vector_store
 
 logger = logging.getLogger("crawler")
@@ -142,14 +142,25 @@ class PoliteCrawler:
             elif force_resync:
                 updated_urls.append((url, lastmod))
 
-        # Find removed articles (present in DB as active, but missing in sitemap)
+        seed_urls = {a["url"] for a in SEED_ARTICLES}
+
+        # Find removed articles: only articles that were previously crawled from sitemap (in processed_set)
+        # and are no longer in the sitemap. Never delete seed articles or internal expert solutions!
         for url, art in existing_articles.items():
-            if art["status"] == "active" and url not in sitemap_urls:
+            if (
+                art["status"] == "active"
+                and url in processed_set
+                and url not in sitemap_urls
+                and url not in seed_urls
+                and not url.startswith("https://support.brilliantdirectories.com/internal/")
+                and art.get("category") != "Expert Solutions"
+            ):
                 deleted_urls.append(url)
 
         # Handle removals immediately
         for del_url in deleted_urls:
             storage.mark_article_deleted(del_url)
+            processed_set.discard(del_url)
             logger.info(f"Purged deleted article: {del_url}")
 
         queue = (added_urls + updated_urls)[:max_articles]
@@ -199,3 +210,4 @@ class PoliteCrawler:
         }
 
 crawler = PoliteCrawler()
+

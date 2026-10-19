@@ -411,6 +411,95 @@ export const SAMPLE_EMAILS: CustomerEmail[] = [
     subject: "Following up on quote #Q-2024-88",
     body: "Hi, we reviewed the estimate for the emergency pet clinic filter. What are the next steps to kick off the project?",
     receivedAt: "2026-10-16T11:00:00Z"
+  },
+  // Additional how-to examples make a 20-email category approval streak reachable in the review UI.
+  {
+    id: "email-051",
+    from: "nina.p@coastalhomesdirectory.com",
+    customerName: "Nina Patel",
+    subject: "Where can I add a license number to member profiles?",
+    body: "Our real estate agents need to display their state license number on their public profile. Is there a profile field we can enable in the admin settings?",
+    receivedAt: "2026-10-16T11:30:00Z"
+  },
+  {
+    id: "email-052",
+    from: "omar.r@independentclinics.org",
+    customerName: "Omar Rahman",
+    subject: "How do I organize nested service categories?",
+    body: "We have separate cardiology services for adult and pediatric patients. Can I make subcategories under Cardiology, and where are those managed?",
+    receivedAt: "2026-10-16T12:00:00Z"
+  },
+  {
+    id: "email-053",
+    from: "paula.s@makercollective.net",
+    customerName: "Paula Silva",
+    subject: "Can members add more than one photo to a listing?",
+    body: "Several artisans want to show a small gallery of their work on each listing. Is there a setting for the number of photos members may upload?",
+    receivedAt: "2026-10-16T12:30:00Z"
+  },
+  {
+    id: "email-054",
+    from: "quentin.d@outdoorpros.us",
+    customerName: "Quentin Davis",
+    subject: "Where do I change the site logo and header image?",
+    body: "We are refreshing the branding for our outdoor services directory. Which admin page lets me replace the logo and the image at the top of the site?",
+    receivedAt: "2026-10-16T13:00:00Z"
+  },
+  {
+    id: "email-055",
+    from: "rosa.m@language-tutors.co",
+    customerName: "Rosa Martinez",
+    subject: "How can I add a custom field to the signup form?",
+    body: "We need new tutors to select the languages they teach when they register. Can I add a field to the member signup form without changing the page code?",
+    receivedAt: "2026-10-16T13:30:00Z"
+  },
+  {
+    id: "email-056",
+    from: "samir.k@localfoodguide.org",
+    customerName: "Samir Khan",
+    subject: "Can I require approval before a new listing appears?",
+    body: "We want our moderators to check new restaurant listings before they are visible to visitors. Where can I turn on approval for new posts?",
+    receivedAt: "2026-10-16T14:00:00Z"
+  },
+  {
+    id: "email-057",
+    from: "tessa.w@familyservicesdirectory.com",
+    customerName: "Tessa Wong",
+    subject: "How do I change where members land after login?",
+    body: "After signing in, our providers should go directly to their dashboard instead of the home page. Is the post-login redirect configurable?",
+    receivedAt: "2026-10-16T14:30:00Z"
+  },
+  {
+    id: "email-058",
+    from: "ulysses.b@craftguild.info",
+    customerName: "Ulysses Brown",
+    subject: "Where can I enable member review responses?",
+    body: "Our members would like to reply publicly to reviews on their profiles. Can that be enabled, and where will they find the response control?",
+    receivedAt: "2026-10-16T15:00:00Z"
+  },
+  {
+    id: "email-059",
+    from: "vera.c@regionalartsnetwork.org",
+    customerName: "Vera Chen",
+    subject: "How do I set the default contact email for the website?",
+    body: "Contact form notifications should go to our new shared office mailbox. Where is the default website contact address configured?",
+    receivedAt: "2026-10-16T15:30:00Z"
+  },
+  {
+    id: "email-060",
+    from: "william.h@cyclingclubs.net",
+    customerName: "William Hughes",
+    subject: "Can I show a map on each member profile?",
+    body: "Our cycling clubs have meeting locations that visitors need to find. Is there a built-in map option for a member's address or listing page?",
+    receivedAt: "2026-10-16T16:00:00Z"
+  },
+  {
+    id: "email-061",
+    from: "yasmin.a@careercoaches.org",
+    customerName: "Yasmin Ali",
+    subject: "Where can I edit the member welcome email?",
+    body: "We want new career coaches to receive a welcome message with links to the profile guide. Which section controls the email sent after registration?",
+    receivedAt: "2026-10-16T16:30:00Z"
   }
 ];
 

@@ -60,7 +60,7 @@ class SOWProposal(BaseModel):
 class ScopeDiffItem(BaseModel):
     req_id: str
     task_name: str
-    status: Literal["UNCHANGED", "MODIFIED", "NEWLY_ADDED", "OUT_OF_SCOPE"]
+    status: Literal["UNCHANGED", "MODIFIED", "NEWLY_ADDED", "REMOVED", "DEFERRED", "OUT_OF_SCOPE"]
     previous_hours: float
     new_hours: float
     delta_hours: float

@@ -12,6 +12,31 @@ class ClarifierAgent:
         for line_idx, line in enumerate(lines, start=1):
             lower = line.lower()
 
+            # Preserve both the existing Stripe scope and the newly requested PayPal gateway.
+            if "paypal" in lower and "stripe" in lower:
+                speaker = self._extract_speaker(line)
+                requirements.append(Requirement(
+                    id=f"REQ-{req_counter:03d}",
+                    title="Automated Recurring Subscription Billing",
+                    description="Retain the existing Stripe recurring subscription billing scope.",
+                    category="FUNCTIONAL",
+                    speaker=speaker,
+                    transcript_quote=line,
+                    line_reference=line_idx
+                ))
+                req_counter += 1
+                requirements.append(Requirement(
+                    id=f"REQ-{req_counter:03d}",
+                    title="PayPal Payment Gateway Integration",
+                    description="Add PayPal as a secondary payment method alongside Stripe.",
+                    category="FUNCTIONAL",
+                    speaker=speaker,
+                    transcript_quote=line,
+                    line_reference=line_idx
+                ))
+                req_counter += 1
+                continue
+
             # Radius & zip code search
             if "zip code" in lower or "radius" in lower:
                 speaker = self._extract_speaker(line)
@@ -85,6 +110,8 @@ class ClarifierAgent:
 
             # Epic EHR integration
             elif "epic ehr" in lower or "hl7" in lower:
+                if any(term in lower for term in ("defer", "remove", "phase 2", "out of scope")):
+                    continue
                 speaker = self._extract_speaker(line)
                 requirements.append(Requirement(
                     id=f"REQ-{req_counter:03d}",
@@ -153,7 +180,30 @@ class ClarifierAgent:
                 ))
                 req_counter += 1
 
-        return requirements
+            # Calendar booking integration can be mentioned in the same line as video scope.
+            if "google calendar" in lower and ("sync" in lower or "booking" in lower):
+                speaker = self._extract_speaker(line)
+                requirements.append(Requirement(
+                    id=f"REQ-{req_counter:03d}",
+                    title="Google Calendar Appointment Booking Sync",
+                    description="Synchronize telemedicine appointment bookings with Google Calendar.",
+                    category="INTEGRATION",
+                    speaker=speaker,
+                    transcript_quote=line,
+                    line_reference=line_idx
+                ))
+                req_counter += 1
+
+        # Ignore repeated consultant paraphrases of a requirement within one transcript.
+        unique_requirements = []
+        seen_titles = set()
+        for requirement in requirements:
+            normalized_title = requirement.title.casefold()
+            if normalized_title not in seen_titles:
+                seen_titles.add(normalized_title)
+                unique_requirements.append(requirement)
+
+        return unique_requirements
 
     def _extract_speaker(self, line: str) -> str:
         if "]" in line and ":" in line:

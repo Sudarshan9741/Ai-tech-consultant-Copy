@@ -16,7 +16,7 @@ export const CustomerEmailSchema = z.object({
   customerName: z.string(),
   subject: z.string(),
   body: z.string(),
-  receivedAt: z.string(),
+  receivedAt: z.string().datetime(),
   threadId: z.string().optional()
 });
 export type CustomerEmail = z.infer<typeof CustomerEmailSchema>;

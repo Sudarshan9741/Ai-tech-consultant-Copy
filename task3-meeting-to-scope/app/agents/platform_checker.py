@@ -10,7 +10,10 @@ class PlatformCheckerAgent:
 
         for req in requirements:
             # Query Task 1 Knowledge Brain API
-            query = f"Can Brilliant Directories configure {req.title}?"
+            if "review" in req.title.lower() or "moderation" in req.title.lower():
+                query = "Where can I set member reviews to require admin moderation?"
+            else:
+                query = f"Can Brilliant Directories configure {req.title}?"
             kb_resp = await knowledge_client.check_platform_capability(query)
 
             is_native = False
@@ -25,7 +28,7 @@ class PlatformCheckerAgent:
                 w in title_lower
                 for w in [
                     "telemedicine", "video", "webrtc", "epic", "ehr", "hl7", "fhir",
-                    "symptom", "iot", "analyzer", "3d map", "vin decoder", "hardware key"
+                    "symptom", "iot", "analyzer", "3d map", "vin decoder", "hardware key", "calendar"
                 ]
             )
 
@@ -55,6 +58,21 @@ class PlatformCheckerAgent:
                 elif "newsletter" in title_lower or "email campaign" in title_lower:
                     setting_path = "Emails > Send Newsletter"
                     rationale = "Native newsletter tool allows composing and scheduling email broadcasts to members."
+                elif "domain" in title_lower or "ssl" in title_lower:
+                    setting_path = "Settings > Domain Manager"
+                    rationale = "Domain pointing and SSL certificate management are available in the platform's Domain Manager."
+                elif "review" in title_lower:
+                    setting_path = "Settings > General Settings > Reviews"
+                    rationale = "Member review and moderation options are available in General Settings."
+                elif "api key" in title_lower or "rest api" in title_lower:
+                    setting_path = "Developer Tools > API Keys"
+                    rationale = "API credentials can be generated through the platform's Developer Tools."
+                elif "refund" in title_lower or "transaction" in title_lower:
+                    setting_path = "Finance > Transaction History"
+                    rationale = "Refunds and transaction adjustments are handled from Transaction History."
+                elif "contact email" in title_lower or "administrative email" in title_lower:
+                    setting_path = "Settings > General Settings"
+                    rationale = "The default administrative contact email is configurable in General Settings."
                 else:
                     is_native = False
                     setting_path = None

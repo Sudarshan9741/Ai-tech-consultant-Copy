@@ -18,6 +18,11 @@ export class EmailClassifier {
       text.includes("double charge") ||
       text.includes("billing issue") ||
       text.includes("chargeback") ||
+      text.includes("payment failed") ||
+      text.includes("card expired") ||
+      text.includes("expired card") ||
+      text.includes("recurring billing") ||
+      text.includes("update my payment method") ||
       text.includes("receipt") ||
       text.includes("invoice")
     ) {

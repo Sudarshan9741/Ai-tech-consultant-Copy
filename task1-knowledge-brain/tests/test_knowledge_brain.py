@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.storage import storage
 from app.vector_store import vector_store
+from app.crawler import crawler
 
 client = TestClient(app)
 
@@ -26,6 +27,20 @@ def test_ask_refund_question():
     assert len(data["sources"]) > 0
     assert any("refund" in s["title"].lower() or "transaction" in s["title"].lower() for s in data["sources"])
     assert "Finance > Transaction History" in data["answer"] or "refund" in data["answer"].lower()
+
+def test_refund_answer_includes_continuation_and_excludes_unrelated_articles():
+    response = client.post(
+        "/api/v1/ask",
+        json={"question": "How do I process a refund for a member in Brilliant Directories?"}
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["answered"] is True
+    assert "Cancel Subscription" in data["answer"]
+    assert "automatically sent to your payment gateway" in data["answer"]
+    assert "Zapier App" not in data["answer"]
+    assert all("webhooks-and-zapier" not in source["url"] for source in data["sources"])
 
 def test_ask_radius_search_question():
     payload = {"question": "Can I configure radius search and zip code filtering for member search?"}
@@ -112,6 +127,11 @@ def test_invalid_inputs():
     resp = client.post("/api/v1/escalations/999999/resolve", json={"expert_response": "dummy"})
     assert resp.status_code == 404
 
+def test_sitemap_lastmod_detects_changed_known_articles():
+    assert crawler._sitemap_is_newer("2026-10-16T00:00:00Z", "2026-10-15T00:00:00") is True
+    assert crawler._sitemap_is_newer("2026-10-14T00:00:00Z", "2026-10-15T00:00:00") is False
+    assert crawler._sitemap_is_newer(None, "2026-10-15T00:00:00") is False
+
 def test_deleted_article_purge():
     # Temporarily mark an article deleted
     test_url = "https://support.brilliantdirectories.com/support/solutions/articles/5000756720-member-reviews-and-rating-settings"
@@ -183,3 +203,62 @@ def test_twenty_evaluation_benchmark_cases():
     # Must meet high accuracy benchmark (at least 90%)
     assert accuracy >= 0.90, f"Expected >= 90% accuracy, got {accuracy*100:.1f}%"
     print(f"\n[Task 1 Benchmark] 20 Cases: Accuracy = {accuracy*100:.1f}%, Avg Latency = {avg_latency:.1f}ms")
+
+def test_ask_custom_domain_and_ssl_retrieval_and_pruning():
+    """Verify that domain and SSL question retrieves domain/SSL content and prunes unrelated email/MX-record content."""
+    payload = {"question": "How do I connect a custom domain and activate free SSL?"}
+    response = client.post("/api/v1/ask", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answered"] is True
+    assert data["confidence"] >= 0.25
+
+    # 1. Verify sources contain only domain/SSL article and NOT email forwarders / MX records
+    assert len(data["sources"]) > 0
+    source_urls = [s["url"] for s in data["sources"]]
+    source_titles = [s["title"].lower() for s in data["sources"]]
+    assert "https://support.brilliantdirectories.com/support/solutions/articles/5000745610-custom-domain-pointing-and-ssl-activation" in source_urls
+    assert not any("email-forwarders" in url for url in source_urls)
+    assert not any("forwarder" in t for t in source_titles)
+
+    # 2. Verify answer contains genuine domain and SSL instructions supported by source passages
+    answer_lower = data["answer"].lower()
+    assert "ssl" in answer_lower
+    assert "domain" in answer_lower
+    assert "a record" in answer_lower or "domain manager" in answer_lower
+
+    # 3. Verify answer does NOT contain unrelated email client / MX record claims
+    assert "mx record" not in answer_lower
+    assert "thunderbird" not in answer_lower
+    assert "outlook" not in answer_lower
+    assert "email forwarder" not in answer_lower
+
+    # 4. Verify images are only domain/SSL related
+    if data["images"]:
+        for img in data["images"]:
+            assert "domain" in img.get("article_title", "").lower() or "ssl" in img.get("article_title", "").lower()
+
+def test_ask_unrelated_question_triggers_escalation():
+    """Verify that an unrelated question outside BD help center triggers human escalation."""
+    payload = {"question": "How do I configure Apache Kafka distributed topic partitions and consumer groups?"}
+    response = client.post("/api/v1/ask", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answered"] is False
+    assert data["escalation_id"] is not None
+    assert "insufficient information" in data["answer"].lower()
+    assert data["sources"] == []
+    assert data["images"] == []
+
+def test_ask_insufficient_evidence_triggers_escalation():
+    """Verify that question with insufficient evidence safely escalates without guessing."""
+    payload = {"question": "Can I integrate quantum teleportation protocol with BD webhook?"}
+    response = client.post("/api/v1/ask", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["answered"] is False
+    assert data["escalation_id"] is not None
+    assert "insufficient information" in data["answer"].lower()
+    assert data["sources"] == []
+    assert data["images"] == []
+

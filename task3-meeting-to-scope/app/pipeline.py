@@ -40,7 +40,13 @@ class MeetingPipeline:
         diff_report = diff_agent.compute_diff(
             baseline_sow=baseline_sow,
             followup_meeting_id=followup_transcript.id,
-            followup_tasks=followup_tasks
+            followup_tasks=followup_tasks,
+            deferred_task_names={
+                task.task_name
+                for task in baseline_sow.native_config_tasks + baseline_sow.custom_code_tasks
+                if "phase 2" in followup_transcript.raw_text.lower()
+                and any(term in task.task_name.lower() for term in ("epic", "ehr", "hl7"))
+            }
         )
         report_id = f"DIFF-{followup_transcript.id.upper()}"
         self.diff_cache[report_id] = diff_report

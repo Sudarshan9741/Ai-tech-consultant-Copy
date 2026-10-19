@@ -11,6 +11,12 @@ from app.seed_data import SEED_ARTICLES, chunk_text
 from app.vector_store import vector_store
 from app.crawler import crawler
 from app.rag_engine import rag_engine
+from app.scheduler import DailySyncScheduler
+
+sync_scheduler = DailySyncScheduler(
+    sync=crawler.sync_sitemap,
+    interval_seconds=settings.scheduled_sync_interval_seconds,
+)
 
 def ensure_seed_data():
     """Ensure seed articles are loaded into database and index."""
@@ -37,7 +43,13 @@ ensure_seed_data()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_seed_data()
-    yield
+    if settings.scheduled_sync_enabled:
+        sync_scheduler.start()
+    try:
+        yield
+    finally:
+        if settings.scheduled_sync_enabled:
+            await sync_scheduler.stop()
 
 app = FastAPI(
     title="Knowledge Brain API",
@@ -420,7 +432,7 @@ async def web_ui():
                     if (data.answered) {
                         html += `<div class="result-box">`;
                         html += `<h4>Answer (Confidence: ${(data.confidence * 100).toFixed(1)}%):</h4>`;
-                        html += `<p style="white-space: pre-line;">${data.answer}</p>`;
+                        html += `<p style="white-space: pre-line;">${renderAnswerMarkdown(data.answer)}</p>`;
                         
                         if (data.sources && data.sources.length) {
                             html += `<h5>Sources & Evidence:</h5>`;
@@ -448,6 +460,19 @@ async def web_ui():
                 } catch (err) {
                     container.innerHTML = `<div class="result-box escalation"><p style="color: var(--danger);">Error communicating with Knowledge Brain.</p></div>`;
                 }
+            }
+
+            function renderAnswerMarkdown(markdown) {
+                const escaped = String(markdown).replace(/[&<>"']/g, character => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                })[character]);
+                return escaped
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/^[ \t]*- (.+)$/gm, '&bull; $1');
             }
 
             async function loadEscalations() {

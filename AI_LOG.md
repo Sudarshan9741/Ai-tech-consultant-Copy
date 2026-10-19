@@ -1,32 +1,26 @@
-# AI Assistance & Decision Log (AI_LOG.md)
+# AI Assistance & Decision Log
 
-This log records the top 5 most useful prompts used during development, as well as an instance where an AI recommendation was explicitly rejected in favor of a superior engineering decision.
+## Five prompt excerpts
 
-## 5 Most Useful Prompts
+These excerpts are from the available project conversation. They preserve the requests’ intent but are not a complete export of the original messages.
 
-### Prompt 1: Polite Sitemap Crawler with Checkpointing
-> *"Implement an async, polite sitemap crawler in Python for Brilliant Directories help center that reads https://support.brilliantdirectories.com/support/sitemap.xml with a token bucket rate limiter, checkpointing to crawl_state.json so it can resume after interruptions without hammering the server."*
+1. **Task 2 audit:** “Verify Task 2 against the assignment requirements: 50 realistic emails, classification, Knowledge Brain API integration, structured reply drafts, human review and feedback history, and the 20-consecutive-approval safeguard.”
+2. **Task 3 debugging:** “Reproduce the failure with one request and identify the exact cause before editing. Apply the smallest necessary fix.”
+3. **Capstone audit:** “Perform a complete final audit of my existing AI Tech Consultant capstone against the original Business Labs assignment requirements.”
+4. **Task 1 scheduler:** “Add a configurable daily scheduler that invokes the existing incremental synchronization process automatically.”
+5. **Model evaluation:** “Design a reproducible comparison using the same evaluation inputs for both models.”
 
-### Prompt 2: Visual Grounding for Setting Screenshots
-> *"Extract screenshot references from the help center articles and associate them with specific setting subheadings and UI navigation paths, so that answers can cite exact UI steps alongside image URLs."*
+## AI suggestion changed or rejected
 
-### Prompt 3: Progressive Autonomy Safeguard with 20-Run Streak
-> *"Design a strict TypeScript state machine that tracks human approval history for customer email replies by category. The system must require 20 consecutive human approvals with zero edits for a specific category before offering an autonomous auto-send mode, and automatically revoke autonomy if an issue is flagged."*
+**Suggestion:** Use a more complex setup with Docker, Milvus, Redis, and Celery.
 
-### Prompt 4: Platform Setting vs. Custom Code Cross-Examination
-> *"In the meeting-to-scope pipeline, implement an agent step that calls the Knowledge Brain API for every client feature request. If Brilliant Directories already provides a native setting for the feature, classify it as a Configuration Task (0.5 hrs) instead of a Custom Engineering Task (8-16 hrs)."*
+**Decision:** Rejected that setup and kept the implementation simpler.
 
-### Prompt 5: Structured Scope Delta Between Discovery and Follow-Up Meetings
-> *"Create a diffing algorithm that takes a baseline SOW and a follow-up meeting transcript, classifying items into Unchanged, Modified, Newly Added, and Out-of-Scope (requiring a change order quote)."*
+**Reason:** Prioritized a working, testable three-task MVP with limited time instead of introducing additional infrastructure and setup complexity.
 
----
+## Final audit work (2026-10-19)
 
-## Rejected AI Suggestion
-
-### Context
-When designing the vector storage for Task 1, an AI tool initially suggested spinning up a multi-container Docker setup with Milvus, Redis, and Celery for distributed scraping and vector indexing.
-
-### Why It Was Rejected
-1. **Unnecessary Complexity & Single Point of Failure**: For an MVP of several hundred documentation articles, a full distributed cluster introduces severe setup friction, network dependencies, and orchestration fragility for the live evaluation.
-2. **Explainability in 30-Minute Live Review**: During the live review, the candidate must explain every single line of code. A self-contained, lightweight, typed persistent vector store with cosine similarity and SQLite persistence is transparent, 100% testable, zero-external-dependency, and immediately verifiable.
-
+- Prompt: “Add sitemap-fetch retry behavior if missing. Do not run a live sync automatically during development or testing.”
+- Tools used: VS Code workspace file inspection, PowerShell repository checks, `apply_patch`, pytest, and the TypeScript compiler. No live sitemap request or paid model request was made.
+- Implemented: bounded sitemap retry/backoff, a mocked retry regression test, configurable Task 1 test database paths, isolated aggregate-test port selection, and safe startup defaults.
+- Verification: Task 1 scheduler/retry tests passed 7/7; Task 2 `npm run lint` passed. The model comparison remains incomplete because no authorized second model endpoint or Anthropic credential was available.

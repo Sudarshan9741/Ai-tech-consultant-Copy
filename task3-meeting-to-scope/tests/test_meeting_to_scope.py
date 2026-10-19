@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 import time
 from fastapi.testclient import TestClient
@@ -8,6 +9,8 @@ from app.agents.platform_checker import platform_checker_agent
 from app.agents.estimation_agent import estimation_agent
 from app.agents.proposal_agent import proposal_agent
 from app.agents.diff_agent import diff_agent
+from app.knowledge_client import knowledge_client, KnowledgeBrainUnavailable
+from app.models import Requirement
 
 client = TestClient(app)
 
@@ -23,13 +26,20 @@ def test_health_endpoint():
 def test_clarifier_extracts_requirements():
     meeting1 = SAMPLE_TRANSCRIPTS[0]
     reqs = clarifier_agent.extract_requirements(meeting1)
-    assert len(reqs) >= 4
+    assert len(reqs) == 5
+    assert len({r.title for r in reqs}) == len(reqs)
     
     titles = [r.title for r in reqs]
     assert any("Zip Code & Radius Search" in t for t in titles)
     assert any("Recurring Subscription Billing" in t for t in titles)
     assert any("Membership Privileges" in t for t in titles)
     assert any("Telemedicine" in t for t in titles)
+
+    followup_titles = [r.title for r in clarifier_agent.extract_requirements(SAMPLE_TRANSCRIPTS[1])]
+    assert "Automated Recurring Subscription Billing" in followup_titles
+    assert "PayPal Payment Gateway Integration" in followup_titles
+    assert "Google Calendar Appointment Booking Sync" in followup_titles
+    assert not any("Epic EHR" in title for title in followup_titles)
     
     # Check that speaker references and quotes are preserved
     first_req = reqs[0]
@@ -38,7 +48,6 @@ def test_clarifier_extracts_requirements():
     assert first_req.line_reference > 0
 
 def test_platform_checker_identifies_native_vs_custom():
-    import asyncio
     meeting1 = SAMPLE_TRANSCRIPTS[0]
     reqs = clarifier_agent.extract_requirements(meeting1)
     checks = asyncio.run(platform_checker_agent.check_requirements(reqs))
@@ -70,8 +79,9 @@ def test_estimation_and_proposal_pipeline():
 
     assert sow["sow_id"] == "SOW-MEETING-001"
     assert sow["client_name"] == "Apex Healthcare Network"
-    assert len(sow["native_config_tasks"]) >= 3
-    assert len(sow["custom_code_tasks"]) >= 1
+    assert len(sow["native_config_tasks"]) == 3
+    assert len(sow["custom_code_tasks"]) == 2
+    assert len(sow["native_config_tasks"]) + len(sow["custom_code_tasks"]) == 5
     assert sow["total_expected_hours"] > 20.0
     assert sow["estimated_budget_usd"] > 1000.0
     assert sow["human_approved"] is False  # Safe default
@@ -106,12 +116,23 @@ def test_scope_diff_detects_meeting2_changes_and_change_orders():
     statuses = [item["status"] for item in diff["diff_items"]]
     assert "UNCHANGED" in statuses
     assert "MODIFIED" in statuses
+    assert "DEFERRED" in statuses
     assert "OUT_OF_SCOPE" in statuses
 
     # AI Symptom checker is brand new / out-of-scope and flags change order
     symptom_item = next(item for item in diff["diff_items"] if "symptom" in item["task_name"].lower())
     assert symptom_item["status"] == "OUT_OF_SCOPE"
     assert symptom_item["change_order_required"] is True
+    calendar_item = next(item for item in diff["diff_items"] if "calendar" in item["task_name"].lower())
+    assert calendar_item["status"] == "OUT_OF_SCOPE"
+    assert calendar_item["change_order_required"] is True
+    paypal_item = next(item for item in diff["diff_items"] if "paypal" in item["task_name"].lower())
+    assert paypal_item["status"] == "OUT_OF_SCOPE"
+    assert paypal_item["change_order_required"] is True
+    epic_item = next(item for item in diff["diff_items"] if "epic" in item["task_name"].lower())
+    assert epic_item["delta_hours"] < 0
+    assert epic_item["status"] == "DEFERRED"
+    assert "Deferred to Phase 2" in epic_item["explanation"]
     assert diff["change_order_required"] is True
 
 def test_invalid_transcript_inputs():
@@ -121,8 +142,18 @@ def test_invalid_transcript_inputs():
     resp = client.post("/api/v1/pipeline/diff", json={"baseline_meeting_id": "invalid", "followup_meeting_id": "invalid2"})
     assert resp.status_code == 404
 
+def test_pipeline_reports_task1_failure_instead_of_returning_unverified_sow(monkeypatch):
+    async def fail_task1(_query):
+        raise KnowledgeBrainUnavailable("Task 1 Knowledge Brain timed out after 10 seconds.")
+
+    monkeypatch.setattr(knowledge_client, "check_platform_capability", fail_task1)
+    resp = client.post("/api/v1/pipeline/process", json={"meeting_id": "meeting-001"})
+
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "Task 1 Knowledge Brain timed out after 10 seconds."
+
 def test_twenty_evaluation_benchmark_cases():
-    """Evaluate 20 distinct feature requirement classification test cases."""
+    """Evaluate 20 requirements through the actual Task 1-backed platform checker."""
     eval_cases = [
         # (Feature title, expected is_native_setting)
         ("Zip code distance search and radius filtering", True),
@@ -149,30 +180,34 @@ def test_twenty_evaluation_benchmark_cases():
         ("Custom biometric WebAuthn security hardware key authentication", False),
     ]
 
-    correct_classifications = 0
-    total_latency_ms = 0.0
+    requirements = [
+        Requirement(
+            id=f"BENCH-{idx:02d}",
+            title=title,
+            description=title,
+            category="FUNCTIONAL",
+            speaker="Benchmark",
+            transcript_quote=title,
+            line_reference=idx
+        )
+        for idx, (title, _) in enumerate(eval_cases, start=1)
+    ]
 
-    for feature_text, expected_native in eval_cases:
-        start_time = time.time()
-        # Query Task 1 Knowledge Brain API
-        query = f"Can Brilliant Directories configure {feature_text}?"
-        resp = client.get("/health")  # verify connectivity
-        assert resp.status_code == 200
-
-        # Simulate platform capability check logic
-        is_native = False
-        lower = feature_text.lower()
-        if any(w in lower for w in ["zip code", "stripe", "membership plan", "lead routing", "newsletter", "domain", "ssl", "review", "api key", "refund", "paypal", "contact email"]):
-            is_native = True
-
-        latency = (time.time() - start_time) * 1000.0
-        total_latency_ms += latency
-
-        if is_native == expected_native:
-            correct_classifications += 1
+    start_time = time.perf_counter()
+    actual_checks = asyncio.run(platform_checker_agent.check_requirements(requirements))
+    total_latency_ms = (time.perf_counter() - start_time) * 1000.0
+    correct_classifications = sum(
+        actual_checks[req.id].is_native_setting == expected_native
+        for req, (_, expected_native) in zip(requirements, eval_cases)
+    )
+    mismatches = [
+        (req.title, expected_native, actual_checks[req.id].is_native_setting, actual_checks[req.id].confidence)
+        for req, (_, expected_native) in zip(requirements, eval_cases)
+        if actual_checks[req.id].is_native_setting != expected_native
+    ]
 
     accuracy = correct_classifications / len(eval_cases)
     avg_latency = total_latency_ms / len(eval_cases)
 
     print(f"\n[Task 3 Benchmark] 20 Requirements Evaluated: Accuracy = {accuracy*100:.1f}%, Avg Latency = {avg_latency:.2f}ms")
-    assert accuracy == 1.0, f"Expected 100% accuracy, got {accuracy*100:.1f}%"
+    assert accuracy == 1.0, f"Expected 100% accuracy, got {accuracy*100:.1f}%; mismatches: {mismatches}"

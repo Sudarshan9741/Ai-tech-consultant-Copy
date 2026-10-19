@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.models import SOWProposal, ScopeDiffReport
 from app.transcripts import SAMPLE_TRANSCRIPTS
 from app.pipeline import pipeline
-from app.knowledge_client import knowledge_client
+from app.knowledge_client import knowledge_client, KnowledgeBrainUnavailable
 
 app = FastAPI(
     title="Meeting to Scope of Work Multi-Agent API",
@@ -35,12 +35,16 @@ class ApproveRequest(BaseModel):
 
 @app.get("/health")
 async def health():
-    kb_test = await knowledge_client.check_platform_capability("Can Brilliant Directories configure radius search?")
+    try:
+        kb_test = await knowledge_client.check_platform_capability("Can Brilliant Directories configure radius search?")
+        task1_connected = kb_test.get("answered", False)
+    except KnowledgeBrainUnavailable:
+        task1_connected = False
     return {
         "status": "healthy",
         "service": "task3-meeting-to-scope",
         "transcripts_available": len(SAMPLE_TRANSCRIPTS),
-        "task1_connected": kb_test.get("answered", False)
+        "task1_connected": task1_connected
     }
 
 @app.get("/api/v1/transcripts")
@@ -65,7 +69,10 @@ async def process_meeting(req: ProcessMeetingRequest):
     if not transcript:
         raise HTTPException(status_code=404, detail="Meeting transcript not found")
 
-    sow = await pipeline.generate_proposal(transcript)
+    try:
+        sow = await pipeline.generate_proposal(transcript)
+    except KnowledgeBrainUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return sow
 
 @app.post("/api/v1/pipeline/diff", response_model=ScopeDiffReport)
@@ -76,8 +83,11 @@ async def process_scope_diff(req: DiffRequest):
     if not base_transcript or not followup_transcript:
         raise HTTPException(status_code=404, detail="One or both meeting transcripts not found")
 
-    base_sow = await pipeline.generate_proposal(base_transcript)
-    diff_report = await pipeline.generate_scope_diff(followup_transcript, base_sow)
+    try:
+        base_sow = await pipeline.generate_proposal(base_transcript)
+        diff_report = await pipeline.generate_scope_diff(followup_transcript, base_sow)
+    except KnowledgeBrainUnavailable as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return diff_report
 
 @app.post("/api/v1/proposals/{sow_id}/approve")
@@ -136,6 +146,7 @@ async def web_ui():
             .badge-custom { background: #7c2d12; color: #fdba74; padding: 3px 8px; border-radius: 4px; font-size: 11px; }
             .stat-box { background: #0f172a; padding: 14px; border-radius: 6px; border: 1px solid var(--border); text-align: center; }
             .stat-val { font-size: 22px; font-weight: 700; color: var(--success); }
+            .error-message { color: #fecaca; background: #7f1d1d; border: 1px solid #ef4444; padding: 14px; border-radius: 6px; white-space: pre-line; }
         </style>
     </head>
     <body>
@@ -170,12 +181,15 @@ async def web_ui():
                 const container = document.getElementById('resultsArea');
                 container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 40px;">Executing multi-agent team (calling Task 1 Knowledge Brain API)...</p>';
 
-                const res = await fetch('/api/v1/pipeline/process', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ meeting_id: meetingId })
-                });
-                const sow = await res.json();
+                try {
+                    const res = await fetch('/api/v1/pipeline/process', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ meeting_id: meetingId }),
+                        signal: AbortSignal.timeout(60000)
+                    });
+                    const sow = await res.json();
+                    if (!res.ok) throw new Error(sow.detail || 'Pipeline request failed with HTTP ' + res.status);
 
                 let html = '<div class="card">';
                 html += '<div style="display: flex; justify-content: space-between; align-items: center;">';
@@ -214,6 +228,12 @@ async def web_ui():
 
                 html += '</div>';
                 container.innerHTML = html;
+                } catch (error) {
+                    const message = error.name === 'TimeoutError'
+                        ? 'The pipeline timed out after 60 seconds. Check that Task 1 and Task 3 are running, then try again.'
+                        : (error.message || 'The pipeline request failed. Check that Task 3 is running, then try again.');
+                    container.innerHTML = '<div class="card error-message"><strong>Unable to complete the Meeting 1 pipeline.</strong><br>' + message + '</div>';
+                }
             }
 
             async function runDiff() {

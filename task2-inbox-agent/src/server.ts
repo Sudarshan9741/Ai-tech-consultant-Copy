@@ -62,9 +62,14 @@ app.post("/api/emails/:id/review", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Invalid action. Must be APPROVED_UNCHANGED, EDITED_AND_APPROVED, or REJECTED" });
   }
 
-  const finalBody = req.body.finalBody || "";
-  const reason = req.body.reason;
-  const audit = inboxStore.recordReview(email.id, parseAction.data, finalBody, "Admin User", reason);
+  const finalBody = typeof req.body.finalBody === "string" ? req.body.finalBody : "";
+  const reason = typeof req.body.reason === "string" ? req.body.reason : undefined;
+  let audit;
+  try {
+    audit = inboxStore.recordReview(email.id, parseAction.data, finalBody, "Admin User", reason);
+  } catch (err) {
+    return res.status(400).json({ error: err instanceof Error ? err.message : "Invalid review" });
+  }
   const updatedState = autonomyEngine.getState(audit.category);
 
   return res.json({
@@ -75,17 +80,21 @@ app.post("/api/emails/:id/review", async (req: Request, res: Response) => {
 });
 
 app.get("/api/autonomy", (_req: Request, res: Response) => {
+  const threshold = autonomyEngine.getState("HOW_TO").threshold;
   res.json({
     system_allow_auto_send: autonomyEngine.allowAutonomousSend,
-    threshold: 20,
+    threshold,
     categories: autonomyEngine.getAllStates()
   });
 });
 
 app.post("/api/autonomy/toggle-safe-send", (req: Request, res: Response) => {
-  const enable = Boolean(req.body.enabled);
+  if (typeof req.body?.enabled !== "boolean") {
+    return res.status(400).json({ error: "enabled must be a boolean" });
+  }
+  const enable = req.body.enabled;
   autonomyEngine.allowAutonomousSend = enable;
-  res.json({
+  return res.json({
     system_allow_auto_send: autonomyEngine.allowAutonomousSend,
     message: enable ? "Automatic sending authorized" : "Automatic sending disabled (Safety Mode)"
   });
@@ -165,7 +174,7 @@ app.get("/", (_req: Request, res: Response) => {
           <!-- EMAIL LIST -->
           <div class="card" style="height: 600px; overflow-y: auto; padding: 0;">
             <div style="padding: 12px; border-bottom: 1px solid var(--border); background: #1e293b; position: sticky; top: 0;">
-              <strong>Customer Inquiries (50 Realistic Scenarios)</strong>
+              <strong>Customer Inquiries (61 Realistic Scenarios)</strong>
             </div>
             <div id="email-list">Loading emails...</div>
           </div>
@@ -190,20 +199,28 @@ app.get("/", (_req: Request, res: Response) => {
         }
 
         async function loadAutonomy() {
-          const res = await fetch('/api/autonomy');
-          const data = await res.json();
+          const status = document.getElementById('autonomy-status');
           const grid = document.getElementById('streak-grid');
+          try {
+          const res = await fetch('/api/autonomy');
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const data = await res.json();
+          status.innerText = data.system_allow_auto_send ? 'Auto-send authorization enabled' : 'Human review required';
           let html = '';
           for (const [cat, state] of Object.entries(data.categories)) {
-            const percent = Math.min(100, (state.consecutiveUnchangedCount / 20) * 100);
+            const percent = Math.min(100, (state.consecutiveUnchangedCount / data.threshold) * 100);
             html += '<div style="background: #0f172a; padding: 10px; border-radius: 6px; border: 1px solid #334155;">';
             html += '<strong>' + cat + '</strong><br>';
-            html += '<small>' + state.consecutiveUnchangedCount + ' / 20 streak</small>';
+            html += '<small>' + state.consecutiveUnchangedCount + ' / ' + data.threshold + ' streak</small>';
             html += '<div class="progress-bar-bg"><div class="progress-bar-fill" style="width: ' + percent + '%;"></div></div>';
             html += '<small style="color: ' + (state.isAutonomous ? '#10b981' : '#94a3b8') + '; font-weight: 600;">' + (state.isAutonomous ? '✅ AUTONOMOUS' : '🔒 Human Gate') + '</small>';
             html += '</div>';
           }
           grid.innerHTML = html;
+          } catch (error) {
+            status.innerText = 'Unable to load autonomy metrics';
+            grid.innerHTML = '<p style="color: #fecaca;">Autonomy status could not be loaded. Refresh the page to retry.</p>';
+          }
         }
 
         function renderEmailList() {

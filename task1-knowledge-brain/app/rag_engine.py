@@ -28,7 +28,7 @@ class RAGEngine:
             }
 
         # 1. Retrieve top chunks
-        results = vector_store.search(query, top_k=4)
+        results = vector_store.search(query, top_k=5)
         top_score = results[0]["score"] if results else 0.0
 
         # 2. Check confidence against threshold
@@ -53,13 +53,30 @@ class RAGEngine:
                 "images": []
             }
 
-        # 3. Aggregate citations and screenshots
+        # 3. Filter retrieved chunks to only relevant evidence
+        # Chunks from the primary matched article are relevant.
+        # Chunks from secondary articles are only included if their score is strong (>= 80% of top_score)
+        # and above the confidence threshold.
+        primary_url = results[0]["article_url"]
+        relevant_chunks = []
+        for c in results:
+            if c["article_url"] == primary_url:
+                # Keep lower-scoring chunks from the primary article so answers
+                # are not cut off at a chunk boundary.
+                relevant_chunks.append(c)
+            elif c["score"] >= settings.confidence_threshold and c["score"] >= top_score * 0.80:
+                relevant_chunks.append(c)
+
+        if not relevant_chunks:
+            relevant_chunks = [results[0]]
+
+        # 4. Aggregate citations and screenshots from relevant chunks only
         sources = []
         seen_urls = set()
         all_images = []
         seen_images = set()
 
-        for chunk in results:
+        for chunk in relevant_chunks:
             if chunk["article_url"] not in seen_urls:
                 seen_urls.add(chunk["article_url"])
                 sources.append({
@@ -80,8 +97,8 @@ class RAGEngine:
                         "article_url": chunk["article_url"]
                     })
 
-        # 4. Generate answer via Claude or Deterministic Grounded Engine
-        answer_text = await self._generate_answer(query, results, all_images)
+        # 5. Generate answer via Claude or Deterministic Grounded Engine
+        answer_text = await self._generate_answer(query, relevant_chunks, all_images)
 
         return {
             "answered": True,
@@ -110,6 +127,7 @@ class RAGEngine:
                 prompt = (
                     "You are the Brilliant Directories AI Tech Consultant. Answer the customer's question "
                     "using ONLY the documentation provided below. Mention exact navigation paths and settings. "
+                    "Ensure every claim is directly supported by the documentation. Do not include unrelated topics. "
                     "If a screenshot explains the setting, mention it clearly.\n\n"
                     f"Documentation Context:\n{context_str}\n\n"
                     f"Visual Guide Screenshots:\n{image_notes}\n\n"
@@ -127,18 +145,26 @@ class RAGEngine:
                 logger.error(f"Live Claude API error: {e}, falling back to grounded synthesis.")
 
         # Deterministic Grounded Synthesis (Transparent & Offline-Ready)
-        top_chunk = context_chunks[0]
-        secondary = [c["text"] for c in context_chunks[1:3] if c["article_url"] != top_chunk["article_url"]]
+        # Group chunks by article and order by chunk_index to maintain coherent, supported claims
+        primary_chunks = [c for c in context_chunks if c["article_url"] == context_chunks[0]["article_url"]]
+        primary_chunks.sort(key=lambda c: c.get("chunk_index", 0))
+        
+        primary_title = primary_chunks[0]["title"]
+        primary_text = "\n\n".join([c["text"] for c in primary_chunks])
         
         answer_lines = [
-            f"Based on the Brilliant Directories documentation in **{top_chunk['title']}**:",
+            f"Based on the Brilliant Directories documentation in **{primary_title}**:",
             "",
-            top_chunk["text"]
+            primary_text
         ]
         
-        if secondary:
+        # Only add secondary details if secondary article meets strict relevance threshold
+        secondary_chunks = [c for c in context_chunks if c["article_url"] != context_chunks[0]["article_url"]]
+        if secondary_chunks:
+            sec_title = secondary_chunks[0]["title"]
+            sec_text = secondary_chunks[0]["text"]
             answer_lines.append("")
-            answer_lines.append(f"Additional details: {secondary[0]}")
+            answer_lines.append(f"Related documentation from **{sec_title}**: {sec_text}")
 
         if images:
             answer_lines.append("")

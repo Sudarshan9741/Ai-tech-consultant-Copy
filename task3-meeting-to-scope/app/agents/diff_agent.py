@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional, Set
 from app.models import SOWProposal, TaskEstimate, ScopeDiffItem, ScopeDiffReport
 
 HOURLY_RATE_USD = 75.0
@@ -10,7 +10,8 @@ class DiffAgent:
         self,
         baseline_sow: SOWProposal,
         followup_meeting_id: str,
-        followup_tasks: List[TaskEstimate]
+        followup_tasks: List[TaskEstimate],
+        deferred_task_names: Optional[Set[str]] = None,
     ) -> ScopeDiffReport:
         baseline_tasks_map = {
             t.task_name.lower(): t
@@ -23,6 +24,7 @@ class DiffAgent:
 
         diff_items: List[ScopeDiffItem] = []
         change_order_needed = False
+        deferred_keys = {name.lower() for name in (deferred_task_names or set())}
 
         # 1. Check existing baseline tasks against followup
         for base_key, base_task in baseline_tasks_map.items():
@@ -54,15 +56,22 @@ class DiffAgent:
                     change_order_required=(status == "MODIFIED" and delta > 0)
                 ))
             else:
-                # Task deferred or removed in follow-up
+                task_key = base_task.task_name.lower()
+                is_deferred = task_key in deferred_keys
+                status = "DEFERRED" if is_deferred else "REMOVED"
+                explanation = (
+                    "Deferred to Phase 2 per client request to balance sprint budget."
+                    if is_deferred
+                    else "Removed from the follow-up scope and no longer included in this delivery."
+                )
                 diff_items.append(ScopeDiffItem(
                     req_id=base_task.req_id,
                     task_name=base_task.task_name,
-                    status="MODIFIED",
+                    status=status,
                     previous_hours=base_task.expected_hours,
                     new_hours=0.0,
                     delta_hours=-base_task.expected_hours,
-                    explanation="Deferred to Phase 2 per client request to balance sprint budget.",
+                    explanation=explanation,
                     change_order_required=False
                 ))
 

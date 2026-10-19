@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import xml.etree.ElementTree as ET
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Any
 import httpx
 from bs4 import BeautifulSoup
@@ -22,12 +22,48 @@ class PoliteCrawler:
         self.headers = {
             "User-Agent": "AI-Tech-Consultant-Bot/1.0 (Polite-Research-Crawler; +https://github.com/ai-tech-consultant)"
         }
+        self._sync_lock = asyncio.Lock()
+
+    @staticmethod
+    def _sitemap_is_newer(lastmod: Optional[str], stored_last_updated: Optional[str]) -> bool:
+        if not lastmod:
+            return False
+        if not stored_last_updated:
+            return True
+        try:
+            sitemap_time = datetime.fromisoformat(lastmod.replace("Z", "+00:00"))
+            stored_time = datetime.fromisoformat(stored_last_updated.replace("Z", "+00:00"))
+            if sitemap_time.tzinfo is None:
+                sitemap_time = sitemap_time.replace(tzinfo=timezone.utc)
+            if stored_time.tzinfo is None:
+                stored_time = stored_time.replace(tzinfo=timezone.utc)
+            return sitemap_time > stored_time
+        except ValueError:
+            return lastmod != stored_last_updated
 
     async def fetch_sitemap_urls(self) -> Dict[str, Optional[str]]:
         """Fetch and parse sitemap.xml, returning a mapping of {url: lastmod}."""
         async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=self.headers) as client:
-            resp = await client.get(self.sitemap_url)
-            resp.raise_for_status()
+            retries = 3
+            backoff = 1.0
+            for attempt in range(retries):
+                try:
+                    resp = await client.get(self.sitemap_url)
+                    resp.raise_for_status()
+                    break
+                except (httpx.HTTPError, httpx.TimeoutException) as exc:
+                    if attempt == retries - 1:
+                        logger.error("Failed to fetch sitemap after %s attempts: %s", retries, exc)
+                        raise
+                    logger.warning(
+                        "Sitemap fetch failed on attempt %s/%s; retrying in %.1fs: %s",
+                        attempt + 1,
+                        retries,
+                        backoff,
+                        exc,
+                    )
+                    await asyncio.sleep(backoff)
+                    backoff *= 2.0
 
         root = ET.fromstring(resp.content)
         urls: Dict[str, Optional[str]] = {}
@@ -124,6 +160,10 @@ class PoliteCrawler:
         Find pages that were added, updated, or removed, and update only what changed.
         Respects polite delays and updates the search index incrementally.
         """
+        async with self._sync_lock:
+            return await self._sync_sitemap(max_articles=max_articles, force_resync=force_resync)
+
+    async def _sync_sitemap(self, max_articles: int, force_resync: bool) -> Dict[str, Any]:
         sitemap_urls = await self.fetch_sitemap_urls()
         existing_articles = {a["url"]: a for a in storage.list_articles(limit=5000)}
         
@@ -139,7 +179,7 @@ class PoliteCrawler:
         for url, lastmod in sitemap_urls.items():
             if url not in existing_articles:
                 added_urls.append((url, lastmod))
-            elif force_resync:
+            elif force_resync or self._sitemap_is_newer(lastmod, existing_articles[url].get("last_updated")):
                 updated_urls.append((url, lastmod))
 
         seed_urls = {a["url"] for a in SEED_ARTICLES}

@@ -65,8 +65,20 @@ export class InboxStore {
     }
 
     const draft = this.drafts.get(emailId);
-    const category = draft ? draft.category : "HOW_TO";
-    const originalDraft = draft ? draft.draftBody : "";
+    if (!draft) {
+      throw new Error("Generate a draft before recording a review");
+    }
+    if (!finalBody.trim()) {
+      throw new Error("A reviewed reply body is required");
+    }
+    if (action === "APPROVED_UNCHANGED" && finalBody !== draft.draftBody) {
+      throw new Error("Unchanged approval requires the draft to match exactly");
+    }
+    if (action === "APPROVED_UNCHANGED" && this.auditLogs.some(record => record.emailId === emailId)) {
+      throw new Error("An email can only count once toward unchanged approvals");
+    }
+    const category = draft.category;
+    const originalDraft = draft.draftBody;
 
     // 1. Update autonomy streak state
     autonomyEngine.recordAction(category, action, reason);
